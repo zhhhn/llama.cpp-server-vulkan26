@@ -39,11 +39,14 @@ ENV DEBIAN_FRONTEND=noninteractive
 # 中科大镜像加速
 RUN sed -i 's@//archive.ubuntu.com@//mirrors.ustc.edu.cn@g' /etc/apt/sources.list.d/ubuntu.sources
 
-# 运行时依赖：vulkan loader + 硬件驱动 + openmp
+# 运行时依赖：vulkan loader + 硬件驱动(RADV + AMDVLK) + 诊断工具
 RUN apt-get update && \
     apt-get install -y \
         libvulkan1 \
         mesa-vulkan-drivers \
+        amdvlk \
+        vulkan-tools \
+        python3 \
         libgomp1 \
         ca-certificates \
         && \
@@ -51,7 +54,9 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 COPY --from=downloader /app/out/ /app/
+COPY entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
 
 EXPOSE 8080
 
-ENTRYPOINT ["/app/llama-server"]
+ENTRYPOINT ["/app/entrypoint.sh"]
