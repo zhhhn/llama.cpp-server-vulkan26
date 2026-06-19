@@ -25,24 +25,17 @@ RUN apt-get update && \
 WORKDIR /app
 RUN git clone --depth 1 https://github.com/ggerganov/llama.cpp.git
 
+# 编译 llama.cpp，启用 Vulkan 后端
+# BUILD_SHARED_LIBS=OFF 将所有代码静态链接进 llama-server，
+# 运行时不需要额外的 .so 文件
 WORKDIR /app/llama.cpp
 RUN mkdir build && cd build && \
-    cmake .. -DGGML_VULKAN=ON && \
+    cmake .. -DGGML_VULKAN=ON -DBUILD_SHARED_LIBS=OFF && \
     cmake --build . --config Release -j $(nproc)
 
-# 收集所有构建产物
-# cmake 将可执行文件和共享库都输出到 build/bin/ 目录下
-# Linux 上 BUILD_SHARED_LIBS=ON，会产生多个 .so 文件（含版本号）
-RUN mkdir -p /app/out/lib && \
-    cp build/bin/llama-server /app/out/ && \
-    cp -a build/bin/lib*.so* /app/out/lib/ 2>/dev/null; true
-
-# 调试：检查收集到的文件
-RUN echo "=== Collected files ===" && \
-    ls -la /app/out/ && \
-    echo "--- Libraries ---" && \
-    ls -la /app/out/lib/ && \
-    echo "=== Done ==="
+# 收集产物：只复制单二进制
+RUN mkdir -p /app/out && \
+    cp build/bin/llama-server /app/out/llama-server
 
 
 # === 第二阶段：运行阶段（支持 systemd，兼容 LXC） ===
@@ -58,6 +51,7 @@ RUN apt-get update && \
         systemd-sysv \
         dbus \
         libvulkan1 \
+        libgomp1 \
         ca-certificates \
         curl \
         openssh-server \
@@ -96,7 +90,6 @@ Wants=network-online.target
 Type=simple
 ExecStart=/app/llama-server
 WorkingDirectory=/app
-Environment=LD_LIBRARY_PATH=/app/lib
 Restart=on-failure
 RestartSec=5
 StandardOutput=journal
@@ -107,12 +100,8 @@ LimitNOFILE=65536
 WantedBy=multi-user.target
 SERVICE
 
-# 从构建阶段复制编译好的二进制和共享库
+# 从构建阶段复制编译好的二进制（静态链接，单个文件搞定）
 COPY --from=builder /app/out/llama-server /app/llama-server
-COPY --from=builder /app/out/lib/ /app/lib/
-
-# 设置库路径
-ENV LD_LIBRARY_PATH=/app/lib:$LD_LIBRARY_PATH
 
 RUN systemctl enable llama-server.service
 
