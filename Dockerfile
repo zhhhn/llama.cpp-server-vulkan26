@@ -11,12 +11,15 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN sed -i 's@//archive.ubuntu.com@//mirrors.ustc.edu.cn@g' /etc/apt/sources.list.d/ubuntu.sources
 
 # 安装编译依赖
+# glslc 和 spirv-headers 是 Vulkan 后端的强制依赖，缺了 cmake 会报错
 RUN apt-get update && \
     apt-get install -y \
         build-essential \
         cmake \
         git \
         libvulkan-dev \
+        glslc \
+        spirv-headers \
         && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
@@ -31,10 +34,11 @@ RUN mkdir build && cd build && \
     cmake .. -DGGML_VULKAN=ON && \
     cmake --build . --config Release -j $(nproc)
 
-# 收集构建产物到 /app/out，方便复制
+# 收集构建产物
+# ggml-vulkan 默认是静态链接到 ggml 中的，
+# 所以最终 llama-server 已经包含了 Vulkan 支持，无需额外 .so
 RUN mkdir -p /app/out && \
-    cp bin/llama-server /app/out/ && \
-    cp build/libggml-vulkan.so /app/out/ 2>/dev/null || true
+    cp bin/llama-server /app/out/llama-server
 
 
 # === 第二阶段：运行阶段 ===
@@ -45,7 +49,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 # 更换为中科大镜像源
 RUN sed -i 's@//archive.ubuntu.com@//mirrors.ustc.edu.cn@g' /etc/apt/sources.list.d/ubuntu.sources
 
-# 只安装运行时所需的 Vulkan 库，大幅缩小镜像体积
+# 只安装运行时所需的 Vulkan 库
 RUN apt-get update && \
     apt-get install -y \
         libvulkan1 \
@@ -53,14 +57,10 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# 从构建阶段复制编译好的二进制和库
+# 从构建阶段复制编译好的二进制
 COPY --from=builder /app/out/llama-server /app/llama-server
-COPY --from=builder /app/out/libggml-vulkan.so /app/libggml-vulkan.so 2>/dev/null || true
 
 WORKDIR /app
-
-# 设置库路径，确保 Vulkan 库能被加载
-ENV LD_LIBRARY_PATH=/app:$LD_LIBRARY_PATH
 
 EXPOSE 8080
 
