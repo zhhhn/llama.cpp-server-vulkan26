@@ -1,54 +1,45 @@
 # ============================================================
-# 多阶段构建：llama.cpp + Vulkan 后端
-# 用于 PVE LXC，entrypoint 直接启动 llama-server
+# 使用官方预编译 Release 二进制（ubuntu-vulkan）
+# 跳过源码编译，直接下载官方构建好的版本
 # ============================================================
 
-# === 第一阶段：构建阶段 ===
-FROM ubuntu:26.04 AS builder
-
-ENV DEBIAN_FRONTEND=noninteractive
-
-RUN sed -i 's@//archive.ubuntu.com@//mirrors.ustc.edu.cn@g' /etc/apt/sources.list.d/ubuntu.sources
+# === 第一阶段：下载官方 Release 包 ===
+FROM ubuntu:26.04 AS downloader
 
 RUN apt-get update && \
-    apt-get install -y \
-        build-essential \
-        cmake \
-        git \
-        libvulkan-dev \
-        glslc \
-        spirv-headers \
-        && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+    apt-get install -y curl ca-certificates && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /app
-RUN git clone --depth 1 https://github.com/ggerganov/llama.cpp.git
-
-# 单二进制，静态链接主库
-# GGML_NATIVE=ON：使用构建机的 CPU 优化（AVX2/FMA 等），
-# 确保 MTP 采样循环不卡在通用 CPU 路径上
-WORKDIR /app/llama.cpp
-RUN mkdir build && cd build && \
-    cmake .. \
-        -DGGML_VULKAN=ON \
-        -DBUILD_SHARED_LIBS=OFF \
-        -DGGML_NATIVE=ON \
-        && \
-    cmake --build . --config Release -j $(nproc)
+WORKDIR /download
+RUN curl -sL \
+    "https://github.com/ggerganov/llama.cpp/releases/download/b9724/llama-b9724-bin-ubuntu-vulkan-x64.tar.gz" \
+    -o llama-vulkan.tar.gz && \
+    tar xzf llama-vulkan.tar.gz && \
+    rm llama-vulkan.tar.gz
 
 RUN mkdir -p /app/out && \
-    cp build/bin/llama-server /app/out/llama-server
-
+    # 复制 llava-server 及其需要的 .so 文件
+    cp llama-b9724/llama-server /app/out/ && \
+    cp llama-b9724/libllama-server-impl.so /app/out/ && \
+    cp llama-b9724/libllama-common.so* /app/out/ && \
+    cp llama-b9724/libllama.so* /app/out/ && \
+    cp llama-b9724/libggml.so* /app/out/ && \
+    cp llama-b9724/libggml-base.so* /app/out/ && \
+    cp llama-b9724/libggml-vulkan.so /app/out/ && \
+    cp llama-b9724/libmtmd.so* /app/out/ && \
+    cp llama-b9724/libllama-cli-impl.so /app/out/ && \
+    # 复制 CPU 变体 .so（让运行时自动选最优）
+    cp llama-b9724/libggml-cpu-*.so /app/out/
 
 # === 第二阶段：最小运行时 ===
 FROM ubuntu:26.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
+# 中科大镜像加速
 RUN sed -i 's@//archive.ubuntu.com@//mirrors.ustc.edu.cn@g' /etc/apt/sources.list.d/ubuntu.sources
 
-# 只装最少的运行时库
+# 运行时依赖：vulkan + glibc
 RUN apt-get update && \
     apt-get install -y \
         libvulkan1 \
@@ -58,7 +49,7 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /app/out/llama-server /app/llama-server
+COPY --from=downloader /app/out/ /app/
 
 EXPOSE 8080
 
