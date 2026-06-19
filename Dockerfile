@@ -29,16 +29,17 @@ WORKDIR /app
 RUN git clone --depth 1 https://github.com/ggerganov/llama.cpp.git
 
 # 编译 llama.cpp，启用 Vulkan 后端
+# cmake 会将输出放在 ${CMAKE_BINARY_DIR}/bin/ 下，即 build/bin/
 WORKDIR /app/llama.cpp
 RUN mkdir build && cd build && \
     cmake .. -DGGML_VULKAN=ON && \
     cmake --build . --config Release -j $(nproc)
 
-# 收集构建产物
+# 收集构建产物：llama-server 在 build/bin/ 下面
 # ggml-vulkan 默认是静态链接到 ggml 中的，
 # 所以最终 llama-server 已经包含了 Vulkan 支持，无需额外 .so
 RUN mkdir -p /app/out && \
-    cp bin/llama-server /app/out/llama-server
+    cp build/bin/llama-server /app/out/llama-server
 
 
 # === 第二阶段：运行阶段 ===
