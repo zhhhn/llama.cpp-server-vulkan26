@@ -25,13 +25,15 @@ RUN apt-get update && \
 WORKDIR /app
 RUN git clone --depth 1 https://github.com/ggerganov/llama.cpp.git
 
-# 静态编译，单二进制，无 .so 依赖
+# 单二进制，静态链接主库
+# GGML_NATIVE=ON：使用构建机的 CPU 优化（AVX2/FMA 等），
+# 确保 MTP 采样循环不卡在通用 CPU 路径上
 WORKDIR /app/llama.cpp
 RUN mkdir build && cd build && \
     cmake .. \
         -DGGML_VULKAN=ON \
         -DBUILD_SHARED_LIBS=OFF \
-        -DGGML_NATIVE=OFF \
+        -DGGML_NATIVE=ON \
         && \
     cmake --build . --config Release -j $(nproc)
 
