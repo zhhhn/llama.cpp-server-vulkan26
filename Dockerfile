@@ -30,8 +30,12 @@ RUN mkdir build && cd build && \
     cmake .. -DGGML_VULKAN=ON && \
     cmake --build . --config Release -j $(nproc)
 
-RUN mkdir -p /app/out && \
-    cp build/bin/llama-server /app/out/llama-server
+# 收集所有构建产物
+# cmake 将可执行文件和共享库都输出到 build/bin/ 目录下
+# Linux 上 BUILD_SHARED_LIBS=ON，会产生多个 .so 文件（含版本号）
+RUN mkdir -p /app/out/lib && \
+    cp build/bin/llama-server /app/out/ && \
+    cp -a build/bin/lib*.so* /app/out/lib/ 2>/dev/null; true
 
 
 # === 第二阶段：运行阶段（支持 systemd，兼容 LXC） ===
@@ -41,7 +45,6 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 RUN sed -i 's@//archive.ubuntu.com@//mirrors.ustc.edu.cn@g' /etc/apt/sources.list.d/ubuntu.sources
 
-# 安装 systemd 及 LXC 运行所需的基础组件
 RUN apt-get update && \
     apt-get install -y \
         systemd \
@@ -55,7 +58,7 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# 清理不必要的 systemd 服务（保留网络和 SSH 相关）
+# 清理不必要的 systemd 服务
 RUN rm -f /lib/systemd/system/getty@.service \
           /lib/systemd/system/serial-getty@.service \
           /lib/systemd/system/console-getty.service \
@@ -72,7 +75,6 @@ RUN rm -f /lib/systemd/system/getty@.service \
           /lib/systemd/system/systemd-timesyncd.service \
           /etc/systemd/system/*.wants/* 2>/dev/null || true
 
-# 保留 systemd-networkd，PVE LXC 依赖它配置网络
 RUN systemctl enable systemd-networkd 2>/dev/null || true
 
 # 创建 llama-server 的 systemd 服务
@@ -97,18 +99,17 @@ LimitNOFILE=65536
 WantedBy=multi-user.target
 SERVICE
 
-# 从构建阶段复制 llama-server 二进制
+# 从构建阶段复制编译好的二进制和共享库
 COPY --from=builder /app/out/llama-server /app/llama-server
+COPY --from=builder /app/out/lib/ /app/lib/
 
-# 启用 llama-server 服务
+# 设置库路径
+ENV LD_LIBRARY_PATH=/app/lib:$LD_LIBRARY_PATH
+
 RUN systemctl enable llama-server.service
 
-# 暴露端口
 EXPOSE 8080
 
-# 设置 systemd 为默认 init
 STOPSIGNAL SIGRTMIN+3
 
-# 默认启动 systemd，LXC 会以 /sbin/init 启动，
-# llama-server 由 systemd 自动管理
 CMD ["/sbin/init"]
