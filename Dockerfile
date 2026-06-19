@@ -89,6 +89,7 @@ Wants=network-online.target
 Type=simple
 ExecStart=/app/llama-server
 WorkingDirectory=/app
+Environment=LD_LIBRARY_PATH=/app/lib
 Restart=on-failure
 RestartSec=5
 StandardOutput=journal
