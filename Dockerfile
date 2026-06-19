@@ -37,6 +37,13 @@ RUN mkdir -p /app/out/lib && \
     cp build/bin/llama-server /app/out/ && \
     cp -a build/bin/lib*.so* /app/out/lib/ 2>/dev/null; true
 
+# 调试：检查收集到的文件
+RUN echo "=== Collected files ===" && \
+    ls -la /app/out/ && \
+    echo "--- Libraries ---" && \
+    ls -la /app/out/lib/ && \
+    echo "=== Done ==="
+
 
 # === 第二阶段：运行阶段（支持 systemd，兼容 LXC） ===
 FROM ubuntu:26.04
