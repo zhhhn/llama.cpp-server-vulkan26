@@ -44,7 +44,6 @@ RUN apt-get update && \
     apt-get install -y \
         libvulkan1 \
         mesa-vulkan-drivers \
-        amdvlk \
         vulkan-tools \
         python3 \
         libgomp1 \
