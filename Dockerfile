@@ -39,10 +39,11 @@ ENV DEBIAN_FRONTEND=noninteractive
 # 中科大镜像加速
 RUN sed -i 's@//archive.ubuntu.com@//mirrors.ustc.edu.cn@g' /etc/apt/sources.list.d/ubuntu.sources
 
-# 运行时依赖：vulkan + glibc
+# 运行时依赖：vulkan loader + 硬件驱动 + openmp
 RUN apt-get update && \
     apt-get install -y \
         libvulkan1 \
+        mesa-vulkan-drivers \
         libgomp1 \
         ca-certificates \
         && \
