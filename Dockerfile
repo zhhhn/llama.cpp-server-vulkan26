@@ -96,6 +96,9 @@ StandardOutput=journal
 StandardError=journal
 LimitNOFILE=65536
 
+# 透传 LXC 环境变量（由 lxc.environment.runtime 传入）
+PassEnvironment=LLAMA_ARG_HOST LLAMA_ARG_MODEL LLAMA_ARG_PORT LLAMA_ARG_N_GPU_LAYERS
+
 [Install]
 WantedBy=multi-user.target
 SERVICE
